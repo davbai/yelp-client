@@ -8,101 +8,135 @@
 
 import UIKit
 
-class BusinessTableViewController: UITableViewController {
+class BusinessTableViewController: UITableViewController, UISearchBarDelegate, FilterDelegate {
         
     var client: YelpClient!
+    
+    var businesses : NSArray!
+    
+    let searchBar : UISearchBar = UISearchBar()
     
     // Configuration strings
     let config = NSDictionary(contentsOfFile: NSBundle.mainBundle().pathForResource("Configuration", ofType: "plist")!)
     
-//    required init(coder aDecoder: NSCoder) {
-//        super.init(coder: aDecoder)
-//    }
-    
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        self.tableView.rowHeight = UITableViewAutomaticDimension
+        self.tableView.estimatedRowHeight = 100
+        
+        self.searchBar.delegate = self
+        self.navigationItem.titleView = self.searchBar
+        
+//        self.navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Filter", style: UIBarButtonItemStyle.Bordered, target: self, action: Selector("showFilterResultsView"))
+
         // Do any additional setup after loading the view, typically from a nib.
         client = YelpClient(consumerKey: config["Yelp Consumer Key"] as String, consumerSecret: config["Yelp Consumer Secret"] as String, accessToken: config["Yelp Token"] as String, accessSecret: config["Yelp Token Secret"] as String)
         
-        client.searchWithTerm("Thai", success: { (operation: AFHTTPRequestOperation!, response: AnyObject!) -> Void in
-            println(response)
+        self.searchBar.text = "Restaurants"
+        client.searchWithTerm("Restaurants", success: { (operation: AFHTTPRequestOperation!, response: AnyObject!) -> Void in
+            self.businesses = response["businesses"] as NSArray
+            self.tableView.reloadData()
             }) { (operation: AFHTTPRequestOperation!, error: NSError!) -> Void in
                 println(error)
         }
     }
     
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-        // Dispose of any resources that can be recreated.
+    func showFilterResultsView() {
+//        var filterView = FilterResultsTableViewController()
+//        filterView.navigationController = self.navigationController
+//        self.navigationController?.presentViewController(FilterResultsTableViewController(), animated: true, completion: nil)
     }
 
     // MARK: - Table view data source
 
-    override func numberOfSectionsInTableView(tableView: UITableView!) -> Int {
-        // #warning Potentially incomplete method implementation.
-        // Return the number of sections.
+    override func numberOfSectionsInTableView(tableView: UITableView) -> Int {
+        return 1
+    }
+
+    override func tableView(tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        if self.businesses != nil {
+            return self.businesses.count
+        }
         return 0
     }
 
-    override func tableView(tableView: UITableView!, numberOfRowsInSection section: Int) -> Int {
-        // #warning Incomplete method implementation.
-        // Return the number of rows in the section.
-        return 0
-    }
+    
+    override func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCellWithIdentifier("businessCell", forIndexPath: indexPath) as BusinessTableViewCell
 
-    /*
-    override func tableView(tableView: UITableView!, cellForRowAtIndexPath indexPath: NSIndexPath!) -> UITableViewCell! {
-        let cell = tableView.dequeueReusableCellWithIdentifier("reuseIdentifier", forIndexPath: indexPath) as UITableViewCell
-
-        // Configure the cell...
-
+        var business = self.businesses[indexPath.row] as NSDictionary
+        
+        if business["image_url"] != nil {
+            cell.businessImageView.setImageWithURL(NSURL(string: business["image_url"] as String))
+        }
+        cell.ratingImageView.setImageWithURL(NSURL(string: business["rating_img_url_large"] as String))
+        
+        let name = business["name"] as String
+        cell.nameLabel.text = "\(indexPath.row + 1). \(name)"
+        
+        let reviewCount = business["review_count"] as Int
+        cell.reviewCountLabel.text = "\(reviewCount) Reviews"
+        cell.reviewCountLabel.sizeToFit()
+        
+        let location = business["location"] as NSDictionary
+        
+        let neighborhood = location["neighborhoods"] as NSArray
+        let address = location["address"] as NSArray
+        cell.addressLabel.text = "\(address[0]), \(neighborhood[0])"
+        
+        var categories : Array = []
+        var categoriesData = business["categories"] as NSArray
+        
+        for cat in categoriesData {
+            categories.append(cat[0])
+        }
+        
+        cell.categoriesLabel.text = ", ".join(categories.map({ "\($0)" }))
+        
         return cell
     }
-    */
-
-    /*
-    // Override to support conditional editing of the table view.
-    override func tableView(tableView: UITableView!, canEditRowAtIndexPath indexPath: NSIndexPath!) -> Bool {
-        // Return NO if you do not want the specified item to be editable.
-        return true
-    }
-    */
-
-    /*
-    // Override to support editing the table view.
-    override func tableView(tableView: UITableView!, commitEditingStyle editingStyle: UITableViewCellEditingStyle, forRowAtIndexPath indexPath: NSIndexPath!) {
-        if editingStyle == .Delete {
-            // Delete the row from the data source
-            tableView.deleteRowsAtIndexPaths([indexPath], withRowAnimation: .Fade)
-        } else if editingStyle == .Insert {
-            // Create a new instance of the appropriate class, insert it into the array, and add a new row to the table view
-        }    
-    }
-    */
-
-    /*
-    // Override to support rearranging the table view.
-    override func tableView(tableView: UITableView!, moveRowAtIndexPath fromIndexPath: NSIndexPath!, toIndexPath: NSIndexPath!) {
-
-    }
-    */
-
-    /*
-    // Override to support conditional rearranging of the table view.
-    override func tableView(tableView: UITableView!, canMoveRowAtIndexPath indexPath: NSIndexPath!) -> Bool {
-        // Return NO if you do not want the item to be re-orderable.
-        return true
-    }
-    */
-
-    /*
-    // MARK: - Navigation
-
-    // In a storyboard-based application, you will often want to do a little preparation before navigation
-    override func prepareForSegue(segue: UIStoryboardSegue!, sender: AnyObject!) {
-        // Get the new view controller using [segue destinationViewController].
-        // Pass the selected object to the new view controller.
-    }
-    */
     
+    override func prepareForSegue(segue: UIStoryboardSegue, sender: AnyObject?) {
+        if segue.identifier == "filterSegue" {
+            var filterVC = segue.destinationViewController.childViewControllers[0] as FilterResultsTableViewController
+            filterVC.filterDelegate = self;
+        }
+    }
+    
+    func searchBarSearchButtonClicked(searchBar: UISearchBar) {
+        let loadingView = GKPopLoadingView()
+        loadingView.show(true, withTitle: "Loading")
+        
+        self.searchBar.resignFirstResponder()
+        
+        client.searchWithTerm(searchBar.text, success: { (operation: AFHTTPRequestOperation!, response: AnyObject!) -> Void in
+            self.businesses = response["businesses"] as NSArray
+            self.tableView.reloadData()
+                loadingView.show(false, withTitle: "")
+            }) { (operation: AFHTTPRequestOperation!, error: NSError!) -> Void in
+                println(error)
+        }
+    }
+    
+    func applyFilters() {
+        let loadingView = GKPopLoadingView()
+        loadingView.show(true, withTitle: "Loading")
+        
+        var parameters = ["term": self.searchBar.text, "location": "San Francisco"] as NSMutableDictionary
+        parameters.addEntriesFromDictionary(Filters.getParameters())
+        
+        client.searchWithParams(parameters, success: { (operation: AFHTTPRequestOperation!, response: AnyObject!) -> Void in
+            self.businesses = response["businesses"] as NSArray
+            println(self.businesses)
+            self.tableView.reloadData()
+            loadingView.show(false, withTitle: "")
+            }) { (operation: AFHTTPRequestOperation!, error: NSError!) -> Void in
+                println(error)
+        }
+    }
+}
+
+protocol FilterDelegate {
+    func applyFilters()
 }
